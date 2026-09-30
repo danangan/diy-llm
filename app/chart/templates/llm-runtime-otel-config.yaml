@@ -1,0 +1,35 @@
+# For the runtime's metrics-exporter sidecar: obstack only accepts pushed OTLP,
+# so it scrapes vLLM's Prometheus metrics and pushes them to the collector
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: llm-runtime-otel-config
+data:
+  config.yaml: |
+    receivers:
+      prometheus:
+        config:
+          scrape_configs:
+            - job_name: vllm
+              scrape_interval: 15s
+              static_configs:
+                - targets: ["localhost:8000"]
+    processors:
+      resource:
+        attributes:
+          - key: service.name
+            value: ${env:OTEL_SERVICE_NAME}
+            action: upsert
+          - key: k8s.pod.uid
+            value: ${env:K8S_POD_UID}
+            action: upsert
+      batch: {}
+    exporters:
+      otlp_http:
+        endpoint: http://${env:NODE_IP}:4318
+    service:
+      pipelines:
+        metrics:
+          receivers: [prometheus]
+          processors: [resource, batch]
+          exporters: [otlp_http]

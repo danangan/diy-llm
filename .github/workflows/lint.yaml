@@ -1,0 +1,30 @@
+name: lint
+
+on:
+  pull_request:
+    paths:
+      - app/**
+      - .github/scripts/**
+      - .github/workflows/lint.yaml
+  # Called by deploy.yaml before it deploys
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  CHART_DIR: app/chart
+  RELEASE: diy-llm
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: azure/setup-helm@v5
+
+      - name: Lint the chart
+        run: |
+          args=(--set runtime.model.bucket=lint --set ui.host=lint.example.com --set ui.certificateArn=lint)
+          helm lint "$CHART_DIR" --strict "${args[@]}"
+          helm template "$RELEASE" "$CHART_DIR" "${args[@]}" > /dev/null

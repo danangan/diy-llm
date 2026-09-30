@@ -1,0 +1,36 @@
+# Terraform: local state, plans and provider caches
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+.terraformrc
+terraform.rc
+terraform.lock.hcl
+
+# tfvars may hold account-specific or sensitive values - see *.tfvars.example
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+!example.tfvars
+
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Helm: packaged charts and pulled dependencies
+*.tgz
+app/chart/charts/
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+
+# macOS
+.DS_Store
+
+# local vars for testing
+local.auto.tfvars

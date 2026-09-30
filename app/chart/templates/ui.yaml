@@ -1,0 +1,154 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ui-volume
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ui
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: ui
+  template:
+    metadata:
+      labels:
+        app: ui
+    spec:
+      containers:
+        - name: open-webui
+          image: ghcr.io/open-webui/open-webui:v0.11.4
+          env:
+            # Only vLLM is used, and upgrades go through the image tag above
+            - name: ENABLE_OLLAMA_API
+              value: "false"
+            - name: ENABLE_VERSION_UPDATE_CHECK
+              value: "false"
+            # No login. Only works while the database has no user accounts.
+            - name: WEBUI_AUTH
+              value: "false"
+            # Shown as "DIY LLM (Open WebUI)"
+            - name: WEBUI_NAME
+              value: DIY LLM
+            - name: WEBUI_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: llm
+                  key: webui-secret-key
+            - name: OPENAI_API_BASE_URL
+              value: http://llm-runtime.{{ .Release.Namespace }}.svc.cluster.local:8000/v1
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: llm
+                  key: vllm-api-key
+            - name: DEFAULT_MODELS
+              value: {{ .Values.runtime.model.name }}
+            - name: NODE_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+            - name: OTEL_SERVICE_NAME
+              value: ui
+            # Lets the collector add the pod's Kubernetes metadata
+            - name: K8S_POD_UID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.uid
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: k8s.pod.uid=$(K8S_POD_UID)
+            - name: ENABLE_OTEL
+              value: "true"
+            - name: ENABLE_OTEL_TRACES
+              value: "true"
+            - name: ENABLE_OTEL_METRICS
+              value: "true"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: http://$(NODE_IP):4317
+            - name: OTEL_EXPORTER_OTLP_INSECURE
+              value: "true"
+          ports:
+            - name: http
+              containerPort: 8080
+          # The first start runs migrations and downloads an embedding model
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 5
+          resources:
+            requests:
+              cpu: 250m
+              memory: 1Gi
+            limits:
+              cpu: "1"
+              memory: 2Gi
+          volumeMounts:
+            - name: data
+              mountPath: /app/backend/data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: ui-volume
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ui
+spec:
+  selector:
+    app: ui
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ui
+  annotations:
+    # Shares Grafana's ALB (infra/dns.tf)
+    alb.ingress.kubernetes.io/group.name: diy-llm
+    alb.ingress.kubernetes.io/certificate-arn: {{ required "ui.certificateArn is required" .Values.ui.certificateArn }}
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+    alb.ingress.kubernetes.io/healthcheck-path: /health
+    alb.ingress.kubernetes.io/load-balancer-attributes: idle_timeout.timeout_seconds=300
+spec:
+  ingressClassName: alb
+  rules:
+    - host: {{ required "ui.host is required" .Values.ui.host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: ui
+                port:
+                  name: http

@@ -1,0 +1,90 @@
+name: deploy
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CHART_DIR: app/chart
+  RELEASE: diy-llm
+  NAMESPACE: default
+
+jobs:
+  lint:
+    uses: ./.github/workflows/lint.yaml
+
+  model:
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          aws-region: ${{ vars.AWS_REGION }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Upload the model to S3
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          MODEL_BUCKET: ${{ vars.MODEL_BUCKET }}
+        run: |
+          pip install huggingface_hub
+          # The CRT client splits and parallelises S3 transfers to use the runner's bandwidth
+          aws configure set default.s3.preferred_transfer_client crt
+          ./.github/scripts/upload-model.sh \
+            "$(yq '.runtime.model.name' "$CHART_DIR/values.yaml")" \
+            "$(yq '.runtime.model.revision' "$CHART_DIR/values.yaml")" \
+            "$MODEL_BUCKET"
+
+  deploy:
+    needs: model
+    runs-on: ubuntu-latest
+    environment: production
+    concurrency:
+      group: deploy-diy-llm
+      cancel-in-progress: false
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME }}
+      MODEL_BUCKET: ${{ vars.MODEL_BUCKET }}
+      UI_HOST: ${{ vars.UI_HOST }}
+      UI_CERTIFICATE_ARN: ${{ vars.UI_CERTIFICATE_ARN }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          aws-region: ${{ vars.AWS_REGION }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+      - uses: azure/setup-helm@v5
+
+      - name: Connect to the cluster
+        run: aws eks update-kubeconfig --region "$AWS_REGION" --name "$EKS_CLUSTER_NAME"
+
+      - name: Deploy
+        run: |
+          # A cold start (GPU node, image pull, model load) can take ~15 minutes
+          helm upgrade --install "$RELEASE" "$CHART_DIR" \
+            --namespace "$NAMESPACE" \
+            --set runtime.model.bucket="$MODEL_BUCKET" \
+            --set awsRegion="$AWS_REGION" \
+            --set ui.host="$UI_HOST" \
+            --set ui.certificateArn="$UI_CERTIFICATE_ARN" \
+            --wait --timeout 40m
+
+      - name: Debug output
+        if: failure()
+        run: |
+          kubectl -n "$NAMESPACE" get pods -o wide
+          kubectl -n "$NAMESPACE" get events --sort-by=.lastTimestamp | tail -40
+          kubectl -n "$NAMESPACE" logs deploy/llm-runtime --all-containers --tail=100 || true
