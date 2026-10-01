@@ -25,6 +25,6 @@ jobs:
 
       - name: Lint the chart
         run: |
-          args=(--set runtime.model.bucket=lint --set ui.host=lint.example.com --set ui.certificateArn=lint)
+          args=(--set runtime.model.bucketName=lint --set api.host=lint.example.com --set api.certificateArn=lint)
           helm lint "$CHART_DIR" --strict "${args[@]}"
           helm template "$RELEASE" "$CHART_DIR" "${args[@]}" > /dev/null

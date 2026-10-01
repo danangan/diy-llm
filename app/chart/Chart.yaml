@@ -1,6 +1,6 @@
 apiVersion: v2
 name: diy-llm
-description: Open WebUI chat on a vLLM runtime
+description: An OpenAI-compatible API on vLLM
 type: application
 version: 0.1.0
 appVersion: "0.1.0"

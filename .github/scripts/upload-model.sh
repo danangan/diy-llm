@@ -1,36 +1,43 @@
 #!/usr/bin/env bash
-# Copies a model from Hugging Face to S3, where vLLM loads it from. Does
-# nothing if it's already there. Set HF_TOKEN for gated models.
-#
-# Usage: upload-model.sh <model> <revision> <bucket>
-# Needs the AWS CLI, and `hf` (pip install huggingface_hub) to upload.
 
 set -euo pipefail
 
-MODEL="$1"
-REVISION="$2"
-DEST="s3://$3/models/${MODEL}/${REVISION}"
+source "$(dirname "${BASH_SOURCE[0]}")/log.sh"
 
-# Uploaded last, so it only exists once the whole model is there
-if aws s3 ls "${DEST}/.complete" >/dev/null; then
-  echo "${MODEL}@${REVISION} is already in S3"
-  exit 0
-fi
+# Wrapped in a function so bash reads the whole script before running it,
+# and editing the file mid-run can't break it
+main() {
+  local model="$1"
+  local revision="$2"
+  local dest="s3://$3/models/${model}/${revision}"
 
-command -v hf >/dev/null || { echo "Missing hf (pip install huggingface_hub)" >&2; exit 1; }
+  # Uploaded last, so it only exists once the whole model is there
+  if aws s3 ls "${dest}/.complete" >/dev/null; then
+    ok "${model}@${revision} is already in S3"
+    return
+  fi
 
-DIR="$(mktemp -d)"
-trap 'rm -rf "$DIR"' EXIT
+  command -v hf >/dev/null || die "Missing hf (pip install huggingface_hub)"
 
-echo "Downloading model $MODEL from HF..."
-# vLLM's S3 loader only reads safetensors, so skip the other weight formats,
-# and the repo files vLLM never reads
-hf download "$MODEL" --revision "$REVISION" --local-dir "$DIR" \
-  --exclude "*.bin" --exclude "*.pt" --exclude "*.pth" --exclude "*.gguf" \
-  --exclude "*.onnx" --exclude "onnx/*" --exclude "*.msgpack" --exclude "*.h5" \
-  --exclude "*.tflite" --exclude "*.ot" --exclude "original/*" --exclude "coreml/*" \
-  --exclude "openvino/*" --exclude "*.md" --exclude ".gitattributes" --exclude "LICENSE*"
+  DIR="$(mktemp -d)"
+  trap 'rm -rf "$DIR"' EXIT
 
-echo "Syncing into S3..."
-aws s3 sync "$DIR" "$DEST" --exclude ".cache/*" --only-show-errors
-date -u +%FT%TZ | aws s3 cp - "${DEST}/.complete"
+  log "Downloading ${model}@${revision} from Hugging Face"
+  # vLLM's S3 loader only reads safetensors, so skip the other weight formats,
+  # and the repo files vLLM never reads
+  hf download "$model" --revision "$revision" --local-dir "$DIR" \
+    --exclude "*.bin" --exclude "*.pt" --exclude "*.pth" --exclude "*.gguf" \
+    --exclude "*.onnx" --exclude "onnx/*" --exclude "*.msgpack" --exclude "*.h5" \
+    --exclude "*.tflite" --exclude "*.ot" --exclude "original/*" --exclude "coreml/*" \
+    --exclude "openvino/*" --exclude "*.md" --exclude ".gitattributes" --exclude "LICENSE*"
+
+  log "Syncing to ${dest}"
+  aws s3 sync "$DIR" "$dest" --exclude ".cache/*"
+
+  local completed_at
+  completed_at="$(date -u +%FT%TZ)"
+  echo "$completed_at" | aws s3 cp - "${dest}/.complete"
+  ok "Uploaded ${model}@${revision}"
+}
+
+main "$@"

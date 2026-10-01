@@ -1,14 +1,11 @@
-# Set by the deploy workflow
 awsRegion: us-east-1
 
 runtime:
   model:
-    name: Qwen/Qwen3-4B-Instruct-2507
-    # Pin a commit to control when the model changes
+    name: Qwen/Qwen2.5-Coder-14B-Instruct-AWQ
     revision: main
-    bucket: "" # Set by the deploy workflow (Terraform's model_bucket)
+    bucketName: "diy-llm"
 
-ui:
-  # Set by the deploy workflow, from Terraform's ui_host and ui_certificate_arn
+api:
   host: ""
   certificateArn: ""

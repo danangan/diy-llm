@@ -1,9 +1,7 @@
-# For the runtime's metrics-exporter sidecar: obstack only accepts pushed OTLP,
-# so it scrapes vLLM's Prometheus metrics and pushes them to the collector
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: llm-runtime-otel-config
+  name: diy-llm-otel-config
 data:
   config.yaml: |
     receivers:

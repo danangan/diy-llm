@@ -1,6 +1,6 @@
 # diy-llm
 
-`chart/` is the Helm chart for the UI and the vLLM runtime. Both use upstream images: `ghcr.io/open-webui/open-webui` and `vllm/vllm-openai`. The UI talks to it inside the cluster, with an API key the chart generates.
+`chart/` is the Helm chart for the vLLM runtime, with the upstream `vllm/vllm-openai` image. It serves an OpenAI-compatible API at `https://<api host>/v1` (only `/v1` is public), with tool calling on for coding agents. vLLM requires an API key, which the chart generates once and keeps across deploys.
 
 ## Model storage
 
@@ -10,7 +10,7 @@ vLLM loads the model straight from S3, streaming the weights to the GPU (`--load
 
 ## Changing the model
 
-Set `runtime.model.name` and `revision` (ideally a commit) in `chart/values.yaml` and push. The model has to fit on a T4 (16 GiB) with room for the KV cache, so up to about 7B parameters in fp16. It must have safetensors weights.
+Set `runtime.model.name` and `revision` (ideally a commit) in `chart/values.yaml` and push. The model has to fit on a T4 (16 GiB) with room for the KV cache: up to about 7B parameters in fp16, or about 14B quantized to 4 bits (AWQ). It must have safetensors weights.
 
 For a gated model, add your Hugging Face token as the `HF_TOKEN` repository secret.
 
@@ -19,7 +19,7 @@ For a gated model, add your Hugging Face token as the `HF_TOKEN` repository secr
 These go to obstack:
 
 - vLLM metrics (latency, time to first token, throughput, KV cache use), pushed by a sidecar
-- vLLM and Open WebUI traces
+- vLLM traces
 - GPU metrics (utilization, memory, temperature, power) from NVIDIA's DCGM exporter, named `DCGM_FI_*`
 
 ## Deploying

@@ -55,8 +55,8 @@ jobs:
       AWS_REGION: ${{ vars.AWS_REGION }}
       EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME }}
       MODEL_BUCKET: ${{ vars.MODEL_BUCKET }}
-      UI_HOST: ${{ vars.UI_HOST }}
-      UI_CERTIFICATE_ARN: ${{ vars.UI_CERTIFICATE_ARN }}
+      API_HOST: ${{ vars.API_HOST }}
+      API_CERTIFICATE_ARN: ${{ vars.API_CERTIFICATE_ARN }}
     steps:
       - uses: actions/checkout@v7
 
@@ -76,10 +76,10 @@ jobs:
           # A cold start (GPU node, image pull, model load) can take ~15 minutes
           helm upgrade --install "$RELEASE" "$CHART_DIR" \
             --namespace "$NAMESPACE" \
-            --set runtime.model.bucket="$MODEL_BUCKET" \
+            --set runtime.model.bucketName="$MODEL_BUCKET" \
             --set awsRegion="$AWS_REGION" \
-            --set ui.host="$UI_HOST" \
-            --set ui.certificateArn="$UI_CERTIFICATE_ARN" \
+            --set api.host="$API_HOST" \
+            --set api.certificateArn="$API_CERTIFICATE_ARN" \
             --wait --timeout 40m
 
       - name: Debug output

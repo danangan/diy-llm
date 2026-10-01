@@ -1,14 +1,8 @@
 {{- $model := .Values.runtime.model -}}
-# Terraform gives this service account read access to the model bucket
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: llm-runtime
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: llm-runtime
+  name: diy-llm
 spec:
   replicas: 1
   # There's only one GPU, so the old pod has to stop before the new one starts
@@ -16,21 +10,19 @@ spec:
     type: Recreate
   selector:
     matchLabels:
-      app: llm-runtime
+      app: diy-llm
   template:
     metadata:
       labels:
-        app: llm-runtime
+        app: diy-llm
       annotations:
-        checksum/otel-config: {{ include (print $.Template.BasePath "/llm-runtime-otel-config.yaml") . | sha256sum }}
+        checksum/otel-config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
     spec:
-      serviceAccountName: llm-runtime
-      # Only the GPU nodes have nvidia.com/gpu to give, and they're tainted
+      serviceAccountName: diy-llm
       tolerations:
         - key: nvidia.com/gpu
           operator: Exists
           effect: NoSchedule
-      # The vllm user from vLLM's image
       securityContext:
         runAsNonRoot: true
         runAsUser: 2000
@@ -40,30 +32,25 @@ spec:
           image: vllm/vllm-openai:v0.30.0
           command: ["vllm", "serve"]
           args:
-            - s3://{{ required "runtime.model.bucket is required" $model.bucket }}/models/{{ $model.name }}/{{ $model.revision }}
-            # Streams the weights from S3 straight to the GPU
+            - s3://{{ required "runtime.model.bucketName is required" $model.bucketName }}/models/{{ $model.name }}/{{ $model.revision }}
             - --load-format=runai_streamer
             # The streamer buffers in host memory, unbounded by default: cap it at 2 GiB
             - '--model-loader-extra-config={"memory_limit": 2147483648}'
-            # Clients ask for the model by its Hugging Face name
             - --served-model-name={{ $model.name }}
-            # Open WebUI sends its tools with tool_choice=auto. Qwen3 uses the hermes format.
             - --enable-auto-tool-choice
             - --tool-call-parser=hermes
             - --host=0.0.0.0
             - --port=8000
             - --otlp-traces-endpoint=grpc://$(NODE_IP):4317
-            # The T4 has no bfloat16 support and 16 GiB of memory
             - --dtype=half
-            - --max-model-len=8192
-            - --gpu-memory-utilization=0.90
+            - --max-model-len=12288
+            - --gpu-memory-utilization=0.95
           env:
-            # Required on /v1 requests. /health and /metrics stay open.
             - name: VLLM_API_KEY
               valueFrom:
                 secretKeyRef:
-                  name: llm
-                  key: vllm-api-key
+                  name: diy-llm-api-key
+                  key: diy-llm-api-key
             - name: AWS_REGION
               value: {{ .Values.awsRegion }}
             - name: HF_HUB_OFFLINE
@@ -77,8 +64,7 @@ spec:
                 fieldRef:
                   fieldPath: status.hostIP
             - name: OTEL_SERVICE_NAME
-              value: llm-runtime
-            # Lets the collector add the pod's Kubernetes metadata
+              value: diy-llm
             - name: K8S_POD_UID
               valueFrom:
                 fieldRef:
@@ -90,7 +76,6 @@ spec:
           ports:
             - name: http
               containerPort: 8000
-          # Loading the model and compiling can take several minutes
           startupProbe:
             httpGet:
               path: /health
@@ -107,7 +92,6 @@ spec:
               port: http
             periodSeconds: 20
             timeoutSeconds: 5
-          # g4dn.xlarge: 4 vCPUs, 16 GiB
           resources:
             requests:
               cpu: "2"
@@ -130,8 +114,7 @@ spec:
                 fieldRef:
                   fieldPath: status.hostIP
             - name: OTEL_SERVICE_NAME
-              value: llm-runtime
-            # Lets the collector add the pod's Kubernetes metadata
+              value: diy-llm
             - name: K8S_POD_UID
               valueFrom:
                 fieldRef:
@@ -149,7 +132,6 @@ spec:
             - name: otel-config
               mountPath: /etc/otelcol
       volumes:
-        # vLLM's compile cache, on the node's disk. Kept across container restarts.
         - name: cache
           emptyDir:
             sizeLimit: 20Gi
@@ -159,15 +141,15 @@ spec:
             sizeLimit: 2Gi
         - name: otel-config
           configMap:
-            name: llm-runtime-otel-config
+            name: diy-llm-otel-config
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: llm-runtime
+  name: diy-llm
 spec:
   selector:
-    app: llm-runtime
+    app: diy-llm
   ports:
     - name: http
       port: 8000
