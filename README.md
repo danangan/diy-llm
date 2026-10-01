@@ -7,6 +7,10 @@ Features:
 - One pod on one GPU, since the GPU isn't shared between deployments
 - HTTPS on your own Route53 domain, through an ALB ingress
 - Observability via https://github.com/danangan/k8s-obstack
+  - k8s metrics
+  - host metrics
+  - gpu metrics
+  - vLLM runtime metrics
 
 CI/CD:
 - A GitHub workflow uploads the model to S3 and deploys the runtime with Helm
@@ -17,18 +21,6 @@ CI/CD:
 - The model is stored in S3. vLLM streams the weights from S3 to the GPU on start.
 - One ALB serves `https://<api host>/v1` (vLLM) and `https://<grafana host>` (Grafana), each with its own ACM certificate
 - vLLM pushes metrics and traces to obstack
-
-## Observability
-
-In general the obstack provides complete observability on k8s:
-- k8s metrics (e.g. pods & container metrics)
-- Host metrics
-  - Including GPU metrics (nvidia only via DCGM)
-- Logs and traces collection
-
-Available metrics to monitor your LLM runtime:
-- GPU metrics
-- vLLM metrics
 
 ## Project Structure
 
