@@ -1,7 +1,7 @@
-ui_dns = {
-  host           = "chat.mydomain.com"
+api_dns = {
+  host           = "llm.mydomain.com"
   zone           = "mydomain.com"
-  certificate_id = "my-ui-certificate-id"
+  certificate_id = "my-api-certificate-id"
 }
 
 grafana_dns = {

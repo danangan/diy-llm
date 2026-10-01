@@ -1,12 +1,7 @@
-# The UI and Grafana on Route53 hosts, sharing one HTTPS ALB through the ALB
-# controller's ingress group "diy-llm". Each ingress adds its own certificate
-# to the ALB, which picks one by hostname (SNI).
-
 locals {
   alb_group = "diy-llm"
 
   sites = {
-    ui      = var.ui_dns
     grafana = var.grafana_dns
   }
   certificate_arns = {
@@ -20,7 +15,6 @@ data "aws_route53_zone" "sites" {
   name     = each.value.zone
 }
 
-# Created by the ALB controller once Grafana's ingress exists
 data "aws_lb" "shared" {
   tags = {
     "elbv2.k8s.aws/cluster" = module.k8s_cluster.cluster_name

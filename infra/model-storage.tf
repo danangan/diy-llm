@@ -1,7 +1,7 @@
 data "aws_caller_identity" "current" {}
 
 resource "aws_s3_bucket" "models" {
-  bucket        = "${var.app_name}-models"
+  bucket        = var.app_name
   force_destroy = true
 }
 
@@ -26,12 +26,12 @@ data "aws_iam_policy_document" "models" {
   }
 }
 
-resource "aws_iam_role" "app_runtime" {
-  name               = "${var.app_name}-runtime"
+resource "aws_iam_role" "service_role" {
+  name               = "${var.app_name}"
   assume_role_policy = data.aws_iam_policy_document.models.json
 }
 
-data "aws_iam_policy_document" "app_runtime" {
+data "aws_iam_policy_document" "service_role" {
   statement {
     actions   = ["s3:ListBucket"]
     resources = [aws_s3_bucket.models.arn]
@@ -42,14 +42,14 @@ data "aws_iam_policy_document" "app_runtime" {
   }
 }
 
-resource "aws_iam_role_policy" "app_runtime" {
-  role   = aws_iam_role.app_runtime.id
-  policy = data.aws_iam_policy_document.app_runtime.json
+resource "aws_iam_role_policy" "service_role" {
+  role   = aws_iam_role.service_role.id
+  policy = data.aws_iam_policy_document.service_role.json
 }
 
-resource "aws_eks_pod_identity_association" "app_runtime" {
+resource "aws_eks_pod_identity_association" "service_role" {
   cluster_name    = module.k8s_cluster.cluster_name
   namespace       = "default"
-  service_account = "llm-runtime"
-  role_arn        = aws_iam_role.app_runtime.arn
+  service_account = "diy-llm"
+  role_arn        = aws_iam_role.service_role.arn
 }

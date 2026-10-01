@@ -6,7 +6,6 @@ output "cluster_name" {
   value = module.k8s_cluster.cluster_name
 }
 
-
 output "model_bucket" {
   value = aws_s3_bucket.models.bucket
 }
@@ -14,6 +13,10 @@ output "model_bucket" {
 output "deployment_user_name" {
   description = "IAM user the CI/CD pipeline logs in as"
   value       = aws_iam_user.deploy.name
+}
+
+output "api_key_command" {
+  value = "kubectl -n default get secret llm-runtime-api-key -o jsonpath='{.data.llm-runtime-api-key}' | base64 -d"
 }
 
 output "grafana_url" {

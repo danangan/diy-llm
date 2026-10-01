@@ -60,10 +60,7 @@ variable "obstack_instance_type" {
   default     = "t4g.large"
 }
 
-# host: served at https://<host>. zone: its Route53 hosted zone.
-# certificate_id: an ACM certificate in var.region covering the host (the last
-# part of its ARN).
-variable "ui_dns" {
+variable "api_dns" {
   type = object({
     host           = string
     zone           = string
